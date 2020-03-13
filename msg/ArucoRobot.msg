@@ -1,0 +1,6 @@
+uint32 id
+uint16 front_aruco_id
+uint16 right_aruco_id
+uint16 left_aruco_id
+uint16 back_aruco_id
+std_msgs/Float32 marker_length_m
