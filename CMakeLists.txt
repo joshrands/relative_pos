@@ -43,6 +43,7 @@ link_directories(${OpenCV_LIBRARY_DIRS})
 
 add_executable(talker src/talker.cpp)
 target_link_libraries(talker ${catkin_LIBRARIES})
+
 add_dependencies(talker beginner_tutorials_generate_messages_cpp)
 
 add_executable(detect_arucos src/detect_arucos.cpp)
@@ -50,3 +51,8 @@ target_link_libraries(detect_arucos ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 
 add_executable(get_pose src/get_pose.cpp)
 target_link_libraries(get_pose ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+
+add_executable(track_relative_bots src/track_relative_bots.cpp)
+target_link_libraries(track_relative_bots ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+add_dependencies(track_relative_bots beginner_tutorials_generate_messages_cpp)
+

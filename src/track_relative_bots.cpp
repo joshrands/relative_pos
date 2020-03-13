@@ -6,12 +6,14 @@
 #include <ros/console.h>
 #include <ros/ros.h> 
 #include <std_msgs/String.h>
+#include <std_msgs/Float32.h>
+#include <relative_pos/ArucoRobot.h>
 
 #include <iostream>
 #include <cstdlib>
 
 namespace {
-const char* about = "Pose estimation of ArUco marker images";
+const char* about = "Detect ArUco marker images";
 const char* keys  =
         "{d        |16    | dictionary: DICT_4X4_50=0, DICT_4X4_100=1, "
         "DICT_4X4_250=2, DICT_4X4_1000=3, DICT_5X5_50=4, DICT_5X5_100=5, "
@@ -19,12 +21,39 @@ const char* keys  =
         "DICT_6X6_250=10, DICT_6X6_1000=11, DICT_7X7_50=12, DICT_7X7_100=13, "
         "DICT_7X7_250=14, DICT_7X7_1000=15, DICT_ARUCO_ORIGINAL = 16}"
         "{h        |false | Print help }"
-        "{l        |      | Actual marker length in meter }"
-        "{v        |<none>| Custom video source, otherwise '0' }"
-        "{h        |false | Print help }"
-        "{l        |      | Actual marker length in meter }"
         "{v        |<none>| Custom video source, otherwise '0' }"
         ;
+}
+
+class Robot
+{
+public:
+    Robot();
+    Robot(relative_pos::ArucoRobot bot);
+
+    float getArucoMarkerSideLength() { return m_info.marker_length_m.data; }
+
+    void setInfo(relative_pos::ArucoRobot info) { this->m_info = info; }
+
+private:
+    relative_pos::ArucoRobot m_info;
+};
+
+Robot bot; 
+
+void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
+{
+    ROS_INFO("Updating ArucoRobot info...");
+
+    relative_pos::ArucoRobot info;
+    info.id = msg->id;
+    info.front_aruco_id = msg->front_aruco_id;
+    info.left_aruco_id = msg->left_aruco_id;
+    info.back_aruco_id = msg->back_aruco_id;
+    info.right_aruco_id = msg->right_aruco_id;
+    std_msgs::Float32 length;
+    length.data = msg->marker_length_m.data;
+    info.marker_length_m = length;
 }
 
 int main(int argc, char **argv)
@@ -37,22 +66,27 @@ int main(int argc, char **argv)
 
     ros::Rate loop_rate(10);
 
+    // set up bot aruco config and subscribe to topic 
+    ros::Subscriber bot_sub = n.subscribe<relative_pos::ArucoRobot>("robot1/info",1000,arucoRobotCallback);
+
+    relative_pos::ArucoRobot botInfo;
+    botInfo.id = 1;
+    botInfo.front_aruco_id = 1;
+    botInfo.right_aruco_id = 4;
+    botInfo.left_aruco_id = 2;
+    botInfo.back_aruco_id = 3;
+    std_msgs::Float32 length;
+    length.data = 0.11; 
+    botInfo.marker_length_m = length; 
+
+    bot.setInfo(botInfo);
+
     // OPENCV STUF
     cv::CommandLineParser parser(argc, argv, keys);
     parser.about(about);
 
-    if (argc < 2) {
-        parser.printMessage();
-        return 1;
-    }
-
-    if (parser.get<bool>("h")) {
-        parser.printMessage();
-        return 0;
-    }
-
     int dictionaryId = parser.get<int>("d");
-    float marker_length_m = parser.get<float>("l");
+    float marker_length_m = bot.getArucoMarkerSideLength(); 
     int wait_time = 10;
 
     if (marker_length_m <= 0) {
@@ -113,6 +147,9 @@ int main(int argc, char **argv)
     int count = 0;
     while (ros::ok() && in_video.grab())
     {
+        // update parameters from ros 
+        marker_length_m = bot.getArucoMarkerSideLength();
+
         in_video.retrieve(image);
         image.copyTo(image_copy);
         std::vector<int> ids;
@@ -185,4 +222,14 @@ int main(int argc, char **argv)
     in_video.release();
 
     return 0;
+}
+
+Robot::Robot()
+{
+    std::cout << "[WARNING]: Initializing robot with no info." << std::endl;
+}
+
+Robot::Robot(relative_pos::ArucoRobot bot)
+{
+    this->m_info = bot;
 }
