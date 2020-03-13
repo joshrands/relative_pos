@@ -23,9 +23,13 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/aruco.hpp>
+
+#include <ros/console.h>
+#include <ros/ros.h> 
+#include <std_msgs/String.h>
+
 #include <iostream>
 #include <cstdlib>
-
 
 namespace {
 const char* about = "Pose estimation of ArUco marker images";
@@ -46,6 +50,15 @@ const char* keys  =
 
 int main(int argc, char **argv)
 {
+    ros::init(argc, argv, "get_pose");
+
+    ros::NodeHandle n;
+
+    ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
+
+    ros::Rate loop_rate(10);
+
+    // OPENCV STUF
     cv::CommandLineParser parser(argc, argv, keys);
     parser.about(about);
 
@@ -77,7 +90,7 @@ int main(int argc, char **argv)
             parser.printMessage();
             return 1;
         }
-/*        char* end = nullptr;
+        char* end;
         int source = static_cast<int>(std::strtol(videoInput.c_str(), &end, \
             10));
         if (!end || end == videoInput.c_str()) {
@@ -85,7 +98,6 @@ int main(int argc, char **argv)
         } else {
             in_video.open(source); // id
         }
-*/
     } else {
         in_video.open(0);
     }
@@ -108,7 +120,7 @@ int main(int argc, char **argv)
         cv::aruco::getPredefinedDictionary( \
         cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
 
-    cv::FileStorage fs("../../calibration_params.yml", cv::FileStorage::READ);
+    cv::FileStorage fs("calibration_params.yml", cv::FileStorage::READ);
 
     fs["camera_matrix"] >> camera_matrix;
     fs["distortion_coefficients"] >> dist_coeffs;
@@ -116,7 +128,11 @@ int main(int argc, char **argv)
     std::cout << "camera_matrix\n" << camera_matrix << std::endl;
     std::cout << "\ndist coeffs\n" << dist_coeffs << std::endl;
 
-    while (in_video.grab())
+    // TODO: Make sure camera matrix and dist coeffs were successful
+    ROS_DEBUG("Hello world!");
+
+    int count = 0;
+    while (ros::ok() && in_video.grab())
     {
         in_video.retrieve(image);
         image.copyTo(image_copy);
@@ -170,6 +186,21 @@ int main(int argc, char **argv)
         char key = (char)cv::waitKey(wait_time);
         if (key == 27)
             break;
+
+        std_msgs::String msg;
+
+        std::stringstream ss;
+        ss << "hello world " << count;
+        msg.data = ss.str();
+
+        ROS_INFO("%s", msg.data.c_str());
+
+        chatter_pub.publish(msg);
+
+        ros::spinOnce();
+
+        loop_rate.sleep();
+        ++count;
     }
 
     in_video.release();
