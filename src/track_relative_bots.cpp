@@ -11,6 +11,19 @@
 
 #include <iostream>
 #include <cstdlib>
+#include <sstream>
+#include <string>
+#include <vector> 
+
+namespace patch
+{
+    template < typename T > std::string to_string( const T& n )
+    {
+        std::ostringstream stm ;
+        stm << n ;
+        return stm.str() ;
+    }
+}
 
 namespace {
 const char* about = "Detect ArUco marker images";
@@ -32,28 +45,55 @@ public:
     Robot(relative_pos::ArucoRobot bot);
 
     float getArucoMarkerSideLength() { return m_info.marker_length_m.data; }
+    std::string getName() { return this->m_name; }
+    relative_pos::ArucoRobot getInfo() { return this->m_info; }
 
+    void setName(std::string name) { this->m_name = name; }
     void setInfo(relative_pos::ArucoRobot info) { this->m_info = info; }
 
 private:
     relative_pos::ArucoRobot m_info;
+    std::string m_name;
 };
 
-Robot bot; 
+std::vector<Robot*> robots;
 
 void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
 {
     ROS_INFO("Updating ArucoRobot info...");
 
-    relative_pos::ArucoRobot info;
-    info.id = msg->id;
-    info.front_aruco_id = msg->front_aruco_id;
-    info.left_aruco_id = msg->left_aruco_id;
-    info.back_aruco_id = msg->back_aruco_id;
-    info.right_aruco_id = msg->right_aruco_id;
-    std_msgs::Float32 length;
-    length.data = msg->marker_length_m.data;
-    info.marker_length_m = length;
+    // get the correct robot from the vector 
+    relative_pos::ArucoRobot info = (relative_pos::ArucoRobot)(*msg);
+    uint32_t id = info.id;
+    ROS_INFO("Received info for robot%d", id); 
+
+    Robot* bot = robots.at(id);
+    bot->setInfo(info);
+}
+
+void createBots(int numberOfBots)
+{
+    for (int i = 0; i < numberOfBots; i++)
+    {
+        // create a new bot 
+        std::string name = "robot" + patch::to_string(i);
+
+        relative_pos::ArucoRobot botInfo;
+        botInfo.id = i;
+        botInfo.front_aruco_id = 1;
+        botInfo.right_aruco_id = 4;
+        botInfo.left_aruco_id = 2;
+        botInfo.back_aruco_id = 3;
+        std_msgs::Float32 length;
+        length.data = 0.11; 
+        botInfo.marker_length_m = length; 
+
+        Robot* newBot = new Robot(botInfo);
+        newBot->setName(name);
+        robots.push_back(newBot);
+
+        std::cout << "NEW ROBOT CREATED" << std::endl;
+    }
 }
 
 int main(int argc, char **argv)
@@ -64,29 +104,30 @@ int main(int argc, char **argv)
 
     ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
 
+    // create n bots 
+    int numberOfBots = 2;
+    createBots(numberOfBots);
+
+    // create an array for all the bot subscribers 
+    ros::Subscriber bot_subs[numberOfBots] = {};
+
+    for (int i = 0; i < numberOfBots; i++)
+    {
+        std::string name = robots.at(i)->getName();
+        bot_subs[i] = n.subscribe<relative_pos::ArucoRobot>(name + "/info",1000,arucoRobotCallback);
+    }
+
+    std::string name = robots.at(0)->getName();
+    ros::Publisher new_bot = n.advertise<relative_pos::ArucoRobot>(name + "/info", 1000);
+    new_bot.publish(robots.at(0)->getInfo());
     ros::Rate loop_rate(10);
-
-    // set up bot aruco config and subscribe to topic 
-    ros::Subscriber bot_sub = n.subscribe<relative_pos::ArucoRobot>("robot1/info",1000,arucoRobotCallback);
-
-    relative_pos::ArucoRobot botInfo;
-    botInfo.id = 1;
-    botInfo.front_aruco_id = 1;
-    botInfo.right_aruco_id = 4;
-    botInfo.left_aruco_id = 2;
-    botInfo.back_aruco_id = 3;
-    std_msgs::Float32 length;
-    length.data = 0.11; 
-    botInfo.marker_length_m = length; 
-
-    bot.setInfo(botInfo);
 
     // OPENCV STUF
     cv::CommandLineParser parser(argc, argv, keys);
     parser.about(about);
 
     int dictionaryId = parser.get<int>("d");
-    float marker_length_m = bot.getArucoMarkerSideLength(); 
+    float marker_length_m = robots.at(0)->getArucoMarkerSideLength(); 
     int wait_time = 10;
 
     if (marker_length_m <= 0) {
@@ -141,14 +182,13 @@ int main(int argc, char **argv)
     std::cout << "camera_matrix\n" << camera_matrix << std::endl;
     std::cout << "\ndist coeffs\n" << dist_coeffs << std::endl;
 
-    // TODO: Make sure camera matrix and dist coeffs were successful
-    ROS_DEBUG("Hello world!");
-
     int count = 0;
     while (ros::ok() && in_video.grab())
-    {
+    { 
+        new_bot.publish(robots.at(0)->getInfo());
+
         // update parameters from ros 
-        marker_length_m = bot.getArucoMarkerSideLength();
+        marker_length_m = robots.at(0)->getArucoMarkerSideLength();
 
         in_video.retrieve(image);
         image.copyTo(image_copy);
@@ -208,8 +248,6 @@ int main(int argc, char **argv)
         std::stringstream ss;
         ss << "hello world " << count;
         msg.data = ss.str();
-
-        ROS_INFO("%s", msg.data.c_str());
 
         chatter_pub.publish(msg);
 
