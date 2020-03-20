@@ -35,6 +35,8 @@ const char* keys  =
         "DICT_7X7_250=14, DICT_7X7_1000=15, DICT_ARUCO_ORIGINAL = 16}"
         "{h        |false | Print help }"
         "{v        |<none>| Custom video source, otherwise '0' }"
+        "{n        |16    | Number of robots }"
+        "{l        |      | Actual aruco side length in meters }"
         ;
 }
 
@@ -71,7 +73,7 @@ void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
     bot->setInfo(info);
 }
 
-void createBots(int numberOfBots)
+void createBots(int numberOfBots,float marker_length_m)
 {
     for (int i = 0; i < numberOfBots; i++)
     {
@@ -80,19 +82,20 @@ void createBots(int numberOfBots)
 
         relative_pos::ArucoRobot botInfo;
         botInfo.id = i;
-        botInfo.front_aruco_id = 1;
-        botInfo.right_aruco_id = 4;
-        botInfo.left_aruco_id = 2;
-        botInfo.back_aruco_id = 3;
+        int offset = i*4;
+        botInfo.front_aruco_id = offset+1;
+        botInfo.right_aruco_id = offset+4;
+        botInfo.left_aruco_id = offset+2;
+        botInfo.back_aruco_id = offset+3;
         std_msgs::Float32 length;
-        length.data = 0.11; 
+        length.data = marker_length_m; 
         botInfo.marker_length_m = length; 
 
         Robot* newBot = new Robot(botInfo);
         newBot->setName(name);
         robots.push_back(newBot);
 
-        std::cout << "NEW ROBOT CREATED" << std::endl;
+        std::cout << name << " created." << std::endl;
     }
 }
 
@@ -100,13 +103,17 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "track_relative_bots");
 
+    cv::CommandLineParser parser(argc, argv, keys);
+    parser.about(about);
+
     ros::NodeHandle n;
 
     ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
 
     // create n bots 
-    int numberOfBots = 2;
-    createBots(numberOfBots);
+    float marker_length_m = parser.get<float>("l"); 
+    int numberOfBots = parser.get<int>("n");
+    createBots(numberOfBots,marker_length_m);
 
     // create an array for all the bot subscribers 
     ros::Subscriber bot_subs[numberOfBots] = {};
@@ -123,11 +130,7 @@ int main(int argc, char **argv)
     ros::Rate loop_rate(10);
 
     // OPENCV STUF
-    cv::CommandLineParser parser(argc, argv, keys);
-    parser.about(about);
-
     int dictionaryId = parser.get<int>("d");
-    float marker_length_m = robots.at(0)->getArucoMarkerSideLength(); 
     int wait_time = 10;
 
     if (marker_length_m <= 0) {
