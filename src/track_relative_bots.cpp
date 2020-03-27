@@ -35,7 +35,7 @@ const char* keys  =
         "DICT_7X7_250=14, DICT_7X7_1000=15, DICT_ARUCO_ORIGINAL = 16}"
         "{h        |false | Print help }"
         "{v        |<none>| Custom video source, otherwise '0' }"
-        "{n        |16    | Number of robots }"
+        "{n        |1    | Number of robots }"
         "{l        |      | Actual aruco side length in meters }"
         ;
 }
@@ -124,10 +124,7 @@ int main(int argc, char **argv)
         bot_subs[i] = n.subscribe<relative_pos::ArucoRobot>(name + "/info",1000,arucoRobotCallback);
     }
 
-    std::string name = robots.at(0)->getName();
-    ros::Publisher new_bot = n.advertise<relative_pos::ArucoRobot>(name + "/info", 1000);
-    new_bot.publish(robots.at(0)->getInfo());
-    ros::Rate loop_rate(10);
+    ros::Rate loop_rate(30);
 
     // OPENCV STUF
     int dictionaryId = parser.get<int>("d");
@@ -156,7 +153,8 @@ int main(int argc, char **argv)
             in_video.open(source); // id
         }
     } else {
-        in_video.open(0);
+        in_video.open("http://192.168.1.20:8000/stream.mjpg");
+//        in_video.open(0);
     }
 
     if (!parser.check()) {
@@ -188,7 +186,8 @@ int main(int argc, char **argv)
     int count = 0;
     while (ros::ok() && in_video.grab())
     { 
-        new_bot.publish(robots.at(0)->getInfo());
+        // for testing purposes
+//        new_bot.publish(robots.at(0)->getInfo());
 
         // update parameters from ros 
         marker_length_m = robots.at(0)->getArucoMarkerSideLength();
@@ -206,10 +205,43 @@ int main(int argc, char **argv)
             std::vector<cv::Vec3d> rvecs, tvecs;
             cv::aruco::estimatePoseSingleMarkers(corners, marker_length_m,
                     camera_matrix, dist_coeffs, rvecs, tvecs);
-            
+
+//            std::cout << "RVECS SIZE: " << rvecs.size() << "\nTVECS SIZE: " << tvecs.size() << std::endl;
+
             // Draw axis for each marker
             for(int i=0; i < ids.size(); i++)
             {
+                // TODO: Determine which robot was detected 
+
+                // output the robot statistics 
+                static int count = 0;
+                if (count++ % 30 == 0) {
+                    std::cout << "Robot" << i << std::endl; 
+                    std::cout << "Translation: x: " << tvecs[i](0) 
+                            << " y: " << tvecs[i](1)
+                            << " z: " << tvecs[i](2) << std::endl;
+                    std::cout << "Rotation: x: " << rvecs[i](0) 
+                            << " y: " << rvecs[i](1)
+                            << " z: " << rvecs[i](2) << std::endl;
+                    cv::Mat rot_mat = cv::Mat::zeros(3,3,CV_64F);
+                    cv::Rodrigues(rvecs[0],rot_mat);
+
+                    std::cout << "Rotation Matrix:"<<std::endl;
+                    for(int i=0; i<3; i++)
+                    {
+                        for(int j=0; j<3; j++)
+                            std::cout<< rot_mat.at<double>(i,j) << " ";
+                        std::cout << std::endl;
+                    }
+                    std::cout << std::endl;
+
+                    cv::Mat mtxR = cv::Mat::zeros(3,3,CV_64F);
+                    cv::Mat mtxQ = cv::Mat::zeros(3,3,CV_64F);
+
+                    cv::Vec3d xyz = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
+                    std::cout << "x_rot: " << ypr(0) << "deg y_rot: " << ypr(1) << "deg z_rot: " << ypr(2) << "deg\n";
+                }
+
                 cv::aruco::drawAxis(image_copy, camera_matrix, dist_coeffs,
                         rvecs[i], tvecs[i], 0.1);
 
@@ -241,18 +273,10 @@ int main(int argc, char **argv)
             }
         }
 
-        imshow("Pose estimation", image_copy);
+        imshow("Relative Robot Tracker", image_copy);
         char key = (char)cv::waitKey(wait_time);
         if (key == 27)
             break;
-
-        std_msgs::String msg;
-
-        std::stringstream ss;
-        ss << "hello world " << count;
-        msg.data = ss.str();
-
-        chatter_pub.publish(msg);
 
         ros::spinOnce();
 
