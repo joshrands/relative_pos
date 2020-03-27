@@ -1,4 +1,5 @@
 /* track_relative_bots.cpp */
+bool g_debug = true;
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/aruco.hpp>
@@ -53,8 +54,18 @@ public:
     void setName(std::string name) { this->m_name = name; }
     void setInfo(relative_pos::ArucoRobot info) { this->m_info = info; }
 
+    void setTranslationVector_M(cv::Vec3d t_xyz) { this->m_t_xyz_m = t_xyz; }
+    void setRotationVector_Deg(cv::Vec3d r_xyz) { this->m_r_xyz_deg = r_xyz; }
+
+    static int getRobotIdFromArucoId(int arucoId) { return floor((arucoId-1)/4); }
+
 private:
     relative_pos::ArucoRobot m_info;
+
+    // translation and rotation vectors 
+    cv::Vec3d m_t_xyz_m;
+    cv::Vec3d m_r_xyz_deg;
+
     std::string m_name;
 };
 
@@ -186,10 +197,8 @@ int main(int argc, char **argv)
     int count = 0;
     while (ros::ok() && in_video.grab())
     { 
-        // for testing purposes
-//        new_bot.publish(robots.at(0)->getInfo());
-
-        // update parameters from ros 
+        // update parameters from ros
+        // WARNING: Currently all robots must have the same marker sizes.  
         marker_length_m = robots.at(0)->getArucoMarkerSideLength();
 
         in_video.retrieve(image);
@@ -206,16 +215,18 @@ int main(int argc, char **argv)
             cv::aruco::estimatePoseSingleMarkers(corners, marker_length_m,
                     camera_matrix, dist_coeffs, rvecs, tvecs);
 
-//            std::cout << "RVECS SIZE: " << rvecs.size() << "\nTVECS SIZE: " << tvecs.size() << std::endl;
-
-            // Draw axis for each marker
             for(int i=0; i < ids.size(); i++)
             {
                 // TODO: Determine which robot was detected 
+                int robotId = Robot::getRobotIdFromArucoId(ids.at(i));
+                std::cout << "Detected aruco" << ids.at(i) << " robot" << robotId << std::endl;
+
+                // TODO: Determine robot x,y,z based off of what side you are viewing 
+                
 
                 // output the robot statistics 
                 static int count = 0;
-                if (count++ % 30 == 0) {
+                if (g_debug && count++ % 30 == 0) {
                     std::cout << "Robot" << i << std::endl; 
                     std::cout << "Translation: x: " << tvecs[i](0) 
                             << " y: " << tvecs[i](1)
@@ -238,18 +249,15 @@ int main(int argc, char **argv)
                     cv::Mat mtxR = cv::Mat::zeros(3,3,CV_64F);
                     cv::Mat mtxQ = cv::Mat::zeros(3,3,CV_64F);
 
-                    cv::Vec3d xyz = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
+                    cv::Vec3d ypr = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
                     std::cout << "x_rot: " << ypr(0) << "deg y_rot: " << ypr(1) << "deg z_rot: " << ypr(2) << "deg\n";
                 }
 
+                // Draw axis for each marker
                 cv::aruco::drawAxis(image_copy, camera_matrix, dist_coeffs,
                         rvecs[i], tvecs[i], 0.1);
 
-                // This section is going to print the data for all the detected
-                // markers. If you have more than a single marker, it is
-                // recommended to change the below section so that either you
-                // only print the data for a specific marker, or you print the
-                // data for each marker separately.
+/*
                 vector_to_marker.str(std::string());
                 vector_to_marker << std::setprecision(4)
                                  << "x: " << std::setw(8) << tvecs[0](0);
@@ -270,6 +278,7 @@ int main(int argc, char **argv)
                 cv::putText(image_copy, vector_to_marker.str(),
                             cvPoint(10, 70), cv::FONT_HERSHEY_SIMPLEX, 0.6,
                             cvScalar(0, 252, 124), 1, CV_AA);
+*/ 
             }
         }
 
