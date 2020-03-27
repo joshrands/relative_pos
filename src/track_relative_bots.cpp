@@ -1,5 +1,6 @@
 /* track_relative_bots.cpp */
-bool g_debug = true;
+bool g_debug = false;
+#define PI 3.14159265
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/aruco.hpp>
@@ -14,7 +15,8 @@ bool g_debug = true;
 #include <cstdlib>
 #include <sstream>
 #include <string>
-#include <vector> 
+#include <vector>
+#include <math.h> 
 
 namespace patch
 {
@@ -217,13 +219,48 @@ int main(int argc, char **argv)
 
             for(int i=0; i < ids.size(); i++)
             {
-                // TODO: Determine which robot was detected 
+                if (ids.at(i) > robots.size() * 4)
+                {
+                    std::cout << "ERROR: Invalid aruco id." << std::endl; 
+                    continue;
+                }
+
+                // Determine which robot was detected 
                 int robotId = Robot::getRobotIdFromArucoId(ids.at(i));
                 std::cout << "Detected aruco" << ids.at(i) << " robot" << robotId << std::endl;
 
-                // TODO: Determine robot x,y,z based off of what side you are viewing 
-                
+                Robot* detectedBot = robots.at(robotId);
 
+                // Determine robot x,y,z based off of what side you are viewing 
+                // TODO: Move this to the robot class 
+                cv::Vec3d t_xyz = tvecs.at(i);
+                if (g_debug)
+                    std::cout << "BEFORE TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
+
+                // get rotation vector 
+                cv::Mat rot_mat = cv::Mat::zeros(3,3,CV_64F);
+                cv::Rodrigues(rvecs[0],rot_mat);
+
+                // dumby matrices 
+                cv::Mat mtxR = cv::Mat::zeros(3,3,CV_64F);
+                cv::Mat mtxQ = cv::Mat::zeros(3,3,CV_64F);
+
+                cv::Vec3d r_xyz = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
+                if (g_debug)
+                    std::cout << "ROTATION: " << r_xyz(0) << "," << r_xyz(1) << "," << r_xyz(2) << std::endl;
+
+                // modify z and x components (distance from camera) using the rotation around the y axis of the marker 
+                double y_rotation_deg = r_xyz(1);
+                t_xyz(2) += cos(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
+                t_xyz(0) += sin(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
+
+                if (g_debug)
+                    std::cout << "AFTER TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
+
+                detectedBot->setTranslationVector_M(t_xyz);
+                detectedBot->setRotationVector_Deg(r_xyz);
+
+/*
                 // output the robot statistics 
                 static int count = 0;
                 if (g_debug && count++ % 30 == 0) {
@@ -252,7 +289,7 @@ int main(int argc, char **argv)
                     cv::Vec3d ypr = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
                     std::cout << "x_rot: " << ypr(0) << "deg y_rot: " << ypr(1) << "deg z_rot: " << ypr(2) << "deg\n";
                 }
-
+*/
                 // Draw axis for each marker
                 cv::aruco::drawAxis(image_copy, camera_matrix, dist_coeffs,
                         rvecs[i], tvecs[i], 0.1);
