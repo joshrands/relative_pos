@@ -18,6 +18,7 @@ find_package(OpenCV 3 REQUIRED)
 add_message_files(
 	FILES
 	ArucoRobot.msg
+  RobotPose.msg
 )
 
 generate_messages(

@@ -11,6 +11,7 @@ bool g_debug = false;
 #include <std_msgs/String.h>
 #include <std_msgs/Float32.h>
 #include <relative_pos/ArucoRobot.h>
+#include <relative_pos/RobotPose.h>
 
 #include <iostream>
 #include <cstdlib>
@@ -60,24 +61,43 @@ public:
     void setName(std::string name) { this->m_name = name; }
     void setInfo(relative_pos::ArucoRobot info) { this->m_info = info; }
 
+    void setRobotPose(relative_pos::RobotPose pose) { this->m_pose = pose; }
+    relative_pos::RobotPose getRobotPose() { return this->m_pose; }
+    relative_pos::RobotPose getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_vec, cv::Vec3d r_vec);
+
+    /* DEPRECATED
     void setTranslationVector_M(cv::Vec3d t_xyz) { this->m_t_xyz_m = t_xyz; }
     void setRotationVector_Deg(cv::Vec3d r_xyz) { this->m_r_xyz_deg = r_xyz; }
+    */
 
     static int getRobotIdFromArucoId(int arucoId) { return floor((arucoId-1)/4); }
 
-    static int m_total_robots;
+    static int m_totalRobots;
+    static int m_parentBot;
 
 protected:
     relative_pos::ArucoRobot m_info;
+    relative_pos::RobotPose m_pose;
     // translation and rotation vectors 
     cv::Vec3d m_t_xyz_m;
     cv::Vec3d m_r_xyz_deg;
     std::string m_name;
 };
 
-int Robot::m_total_robots = 0;
+int Robot::m_totalRobots = 0;
+int Robot::m_parentBot = 0;
 
 std::vector<Robot*> robots;
+
+// callback function for parent robot pose 
+void parentBotPoseCallback(const relative_pos::RobotPose::ConstPtr& msg)
+{
+    relative_pos::RobotPose pose = (relative_pos::RobotPose)(*msg);
+
+    ROS_INFO_STREAM("Reived pose update for parent robot " << Robot::m_parentBot);
+
+    robots.at(Robot::m_parentBot)->setRobotPose(pose);
+}
 
 // callback function for setting parameters about a robot 
 void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
@@ -88,7 +108,7 @@ void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
     ROS_INFO("Received info for robot%d", id); 
 
     // make sure this robot exists with current parameters 
-    if (id >= Robot::m_total_robots)
+    if (id >= Robot::m_totalRobots)
         ROS_WARN("Invalid Robot ID detected.");
 
     Robot* bot = robots.at(id);
@@ -144,11 +164,27 @@ int main(int argc, char **argv)
 
     // create an array for all the bot subscribers 
     ros::Subscriber bot_subs[numberOfBots] = {};
+    // create an array for all bot publishers 
+    // the index of the parent node will be null
+    ros::Publisher relative_positions[numberOfBots] = {};
+    ros::Subscriber parentBotPose;
+
+    // get parent bot id 
+    Robot::m_parentBot = parser.get<int>("p");
+    std::string parentBotName = "robot" + patch::to_string(Robot::m_parentBot);
 
     for (int i = 0; i < numberOfBots; i++)
     {
         std::string name = robots.at(i)->getName();
         bot_subs[i] = n.subscribe<relative_pos::ArucoRobot>(name + "/info",1000,arucoRobotCallback);
+
+        if (i != Robot::m_parentBot)
+        {
+            // create a publisher!
+            relative_positions[i] = n.advertise<relative_pos::RobotPose>(parentBotName + "/" + name + "/relative_pose", 1000);
+        }
+        else 
+            parentBotPose = n.subscribe<relative_pos::RobotPose>(parentBotName + "/pose",1000,parentBotPoseCallback);
     }
 
     ros::Rate loop_rate(30);
@@ -233,7 +269,7 @@ int main(int argc, char **argv)
             {
                 if (ids.at(i) > robots.size() * 4)
                 {
-                    std::cout << "ERROR: Invalid aruco id." << std::endl; 
+                    ROS_WARN("ERROR: Invalid aruco id %d",ids.at(i));
                     continue;
                 }
 
@@ -269,65 +305,14 @@ int main(int argc, char **argv)
                 if (g_debug)
                     std::cout << "AFTER TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
 
-                detectedBot->setTranslationVector_M(t_xyz);
-                detectedBot->setRotationVector_Deg(r_xyz);
-
-/*
-                // output the robot statistics 
-                static int count = 0;
-                if (g_debug && count++ % 30 == 0) {
-                    std::cout << "Robot" << i << std::endl; 
-                    std::cout << "Translation: x: " << tvecs[i](0) 
-                            << " y: " << tvecs[i](1)
-                            << " z: " << tvecs[i](2) << std::endl;
-                    std::cout << "Rotation: x: " << rvecs[i](0) 
-                            << " y: " << rvecs[i](1)
-                            << " z: " << rvecs[i](2) << std::endl;
-                    cv::Mat rot_mat = cv::Mat::zeros(3,3,CV_64F);
-                    cv::Rodrigues(rvecs[0],rot_mat);
-
-                    std::cout << "Rotation Matrix:"<<std::endl;
-                    for(int i=0; i<3; i++)
-                    {
-                        for(int j=0; j<3; j++)
-                            std::cout<< rot_mat.at<double>(i,j) << " ";
-                        std::cout << std::endl;
-                    }
-                    std::cout << std::endl;
-
-                    cv::Mat mtxR = cv::Mat::zeros(3,3,CV_64F);
-                    cv::Mat mtxQ = cv::Mat::zeros(3,3,CV_64F);
-
-                    cv::Vec3d ypr = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
-                    std::cout << "x_rot: " << ypr(0) << "deg y_rot: " << ypr(1) << "deg z_rot: " << ypr(2) << "deg\n";
-                }
-*/
+//                detectedBot->setTranslationVector_M(t_xyz);
+//                detectedBot->setRotationVector_Deg(r_xyz);
                 // Draw axis for each marker
                 cv::aruco::drawAxis(image_copy, camera_matrix, dist_coeffs,
                         rvecs[i], tvecs[i], 0.1);
 
-/*
-                vector_to_marker.str(std::string());
-                vector_to_marker << std::setprecision(4)
-                                 << "x: " << std::setw(8) << tvecs[0](0);
-                cv::putText(image_copy, vector_to_marker.str(),
-                            cvPoint(10, 30), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                            cvScalar(0, 252, 124), 1, CV_AA);
+                // determine robot heading 
 
-                vector_to_marker.str(std::string());
-                vector_to_marker << std::setprecision(4)
-                                 << "y: " << std::setw(8) << tvecs[0](1);
-                cv::putText(image_copy, vector_to_marker.str(),
-                            cvPoint(10, 50), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                            cvScalar(0, 252, 124), 1, CV_AA);
-
-                vector_to_marker.str(std::string());
-                vector_to_marker << std::setprecision(4)
-                                 << "z: " << std::setw(8) << tvecs[0](2);
-                cv::putText(image_copy, vector_to_marker.str(),
-                            cvPoint(10, 70), cv::FONT_HERSHEY_SIMPLEX, 0.6,
-                            cvScalar(0, 252, 124), 1, CV_AA);
-*/ 
             }
         }
 
