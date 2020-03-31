@@ -1,4 +1,5 @@
 /* track_relative_bots.cpp */
+
 bool g_debug = false;
 #define PI 3.14159265
 
@@ -18,6 +19,7 @@ bool g_debug = false;
 #include <vector>
 #include <math.h> 
 
+// to_string didn't work for some reason 
 namespace patch
 {
     template < typename T > std::string to_string( const T& n )
@@ -38,11 +40,13 @@ const char* keys  =
         "DICT_7X7_250=14, DICT_7X7_1000=15, DICT_ARUCO_ORIGINAL = 16}"
         "{h        |false | Print help }"
         "{v        |<none>| Custom video source, otherwise '0' }"
-        "{n        |1    | Number of robots }"
+        "{n        |1     | Number of robots }"
         "{l        |      | Actual aruco side length in meters }"
+        "{p        |0     | Parent robot id}"
         ;
 }
 
+/* Robot class for storing information about a robot being tracked */
 class Robot
 {
 public:
@@ -61,26 +65,31 @@ public:
 
     static int getRobotIdFromArucoId(int arucoId) { return floor((arucoId-1)/4); }
 
-private:
-    relative_pos::ArucoRobot m_info;
+    static int m_total_robots;
 
+protected:
+    relative_pos::ArucoRobot m_info;
     // translation and rotation vectors 
     cv::Vec3d m_t_xyz_m;
     cv::Vec3d m_r_xyz_deg;
-
     std::string m_name;
 };
 
+int Robot::m_total_robots = 0;
+
 std::vector<Robot*> robots;
 
+// callback function for setting parameters about a robot 
 void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
 {
-    ROS_INFO("Updating ArucoRobot info...");
-
     // get the correct robot from the vector 
     relative_pos::ArucoRobot info = (relative_pos::ArucoRobot)(*msg);
     uint32_t id = info.id;
     ROS_INFO("Received info for robot%d", id); 
+
+    // make sure this robot exists with current parameters 
+    if (id >= Robot::m_total_robots)
+        ROS_WARN("Invalid Robot ID detected.");
 
     Robot* bot = robots.at(id);
     bot->setInfo(info);
@@ -108,7 +117,7 @@ void createBots(int numberOfBots,float marker_length_m)
         newBot->setName(name);
         robots.push_back(newBot);
 
-        std::cout << name << " created." << std::endl;
+        ROS_INFO_STREAM(name << " created");
     }
 }
 
@@ -121,11 +130,16 @@ int main(int argc, char **argv)
 
     ros::NodeHandle n;
 
-    ros::Publisher chatter_pub = n.advertise<std_msgs::String>("chatter", 1000);
-
     // create n bots 
     float marker_length_m = parser.get<float>("l"); 
     int numberOfBots = parser.get<int>("n");
+    if (0 == numberOfBots)
+    {
+        ROS_WARN("-n flag is 0, no robots can be detected.");
+        return -1;
+    }
+
+    // create the robots 
     createBots(numberOfBots,marker_length_m);
 
     // create an array for all the bot subscribers 
@@ -144,8 +158,7 @@ int main(int argc, char **argv)
     int wait_time = 10;
 
     if (marker_length_m <= 0) {
-        std::cerr << "marker length must be a positive value in meter" 
-                  << std::endl;
+        ROS_WARN("marker length must be a positive value in meter");
         return 1;
     }
 
@@ -166,8 +179,7 @@ int main(int argc, char **argv)
             in_video.open(source); // id
         }
     } else {
-        in_video.open("http://192.168.1.20:8000/stream.mjpg");
-//        in_video.open(0);
+        in_video.open(0);
     }
 
     if (!parser.check()) {
