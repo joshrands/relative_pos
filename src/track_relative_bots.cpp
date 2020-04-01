@@ -343,8 +343,7 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     t_xyz(2) += cos(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
     t_xyz(0) += sin(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
 
-    if (g_debug)
-        std::cout << "AFTER TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
+    std::cout << "AFTER TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
 
     geometry_msgs::Pose2D parentPose = this->m_pose;
 
@@ -352,8 +351,9 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     // z axis is straight out from robot 
     // +x is right, -x is left 
     geometry_msgs::Pose2D detectedPose;
-    detectedPose.x = parentPose.x + t_xyz(0); 
-    detectedPose.y = parentPose.y + t_xyz(2); 
+    std::cout << parentPose.theta << std::endl;
+    detectedPose.x = parentPose.x + cos(parentPose.theta*PI / 180.0)*t_xyz(0) + sin(parentPose.theta*PI / 180.0)*t_xyz(2); 
+    detectedPose.y = parentPose.y - sin(parentPose.theta*PI / 180.0)*t_xyz(0) + cos(parentPose.theta*PI / 180.0)*t_xyz(2); 
 
     // get theta 
     // rotation around the aruco y axis gives relative 'z axis' rotation
