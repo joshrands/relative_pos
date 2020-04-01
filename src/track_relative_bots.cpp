@@ -10,6 +10,7 @@ bool g_debug = false;
 #include <ros/ros.h> 
 #include <std_msgs/String.h>
 #include <std_msgs/Float32.h>
+#include <geometry_msgs/Pose2D.h>
 #include <relative_pos/ArucoRobot.h>
 #include <relative_pos/RobotPose.h>
 
@@ -61,9 +62,9 @@ public:
     void setName(std::string name) { this->m_name = name; }
     void setInfo(relative_pos::ArucoRobot info) { this->m_info = info; }
 
-    void setRobotPose(relative_pos::RobotPose pose) { this->m_pose = pose; }
-    relative_pos::RobotPose getRobotPose() { return this->m_pose; }
-    relative_pos::RobotPose getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_vec, cv::Vec3d r_vec);
+    void setRobotPose(geometry_msgs::Pose2D pose) { this->m_pose = pose; }
+    geometry_msgs::Pose2D getRobotPose() { return this->m_pose; }
+    geometry_msgs::Pose2D getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_vec, cv::Vec3d r_vec, int markerId);
 
     /* DEPRECATED
     void setTranslationVector_M(cv::Vec3d t_xyz) { this->m_t_xyz_m = t_xyz; }
@@ -77,7 +78,7 @@ public:
 
 protected:
     relative_pos::ArucoRobot m_info;
-    relative_pos::RobotPose m_pose;
+    geometry_msgs::Pose2D m_pose;
     // translation and rotation vectors 
     cv::Vec3d m_t_xyz_m;
     cv::Vec3d m_r_xyz_deg;
@@ -90,9 +91,9 @@ int Robot::m_parentBot = 0;
 std::vector<Robot*> robots;
 
 // callback function for parent robot pose 
-void parentBotPoseCallback(const relative_pos::RobotPose::ConstPtr& msg)
+void parentBotPoseCallback(const geometry_msgs::Pose2D::ConstPtr& msg)
 {
-    relative_pos::RobotPose pose = (relative_pos::RobotPose)(*msg);
+    geometry_msgs::Pose2D pose = (geometry_msgs::Pose2D)(*msg);
 
     ROS_INFO_STREAM("Reived pose update for parent robot " << Robot::m_parentBot);
 
@@ -172,6 +173,7 @@ int main(int argc, char **argv)
     // get parent bot id 
     Robot::m_parentBot = parser.get<int>("p");
     std::string parentBotName = "robot" + patch::to_string(Robot::m_parentBot);
+    Robot* parentBot = robots.at(Robot::m_parentBot);
 
     for (int i = 0; i < numberOfBots; i++)
     {
@@ -181,10 +183,10 @@ int main(int argc, char **argv)
         if (i != Robot::m_parentBot)
         {
             // create a publisher!
-            relative_positions[i] = n.advertise<relative_pos::RobotPose>(parentBotName + "/" + name + "/relative_pose", 1000);
+            relative_positions[i] = n.advertise<geometry_msgs::Pose2D>(parentBotName + "/" + name + "/relative_pose", 1000);
         }
         else 
-            parentBotPose = n.subscribe<relative_pos::RobotPose>(parentBotName + "/pose",1000,parentBotPoseCallback);
+            parentBotPose = n.subscribe<geometry_msgs::Pose2D>(parentBotName + "/pose",1000,parentBotPoseCallback);
     }
 
     ros::Rate loop_rate(30);
@@ -275,44 +277,18 @@ int main(int argc, char **argv)
 
                 // Determine which robot was detected 
                 int robotId = Robot::getRobotIdFromArucoId(ids.at(i));
-                std::cout << "Detected aruco" << ids.at(i) << " robot" << robotId << std::endl;
+                ROS_INFO_STREAM("Robot" << Robot::m_parentBot << " detected Robot" << robotId);
 
                 Robot* detectedBot = robots.at(robotId);
 
-                // Determine robot x,y,z based off of what side you are viewing 
-                // TODO: Move this to the robot class 
-                cv::Vec3d t_xyz = tvecs.at(i);
-                if (g_debug)
-                    std::cout << "BEFORE TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
+                // Determine robot x,y,theta based off of what side you are viewing 
+                geometry_msgs::Pose2D detectedPose = parentBot->getRelativeRobotPoseFromArucoVectors(tvecs.at(i),rvecs.at(i),ids.at(i)); 
+                relative_positions[robotId].publish(detectedPose);
+                detectedBot->setRobotPose(detectedPose);
 
-                // get rotation vector 
-                cv::Mat rot_mat = cv::Mat::zeros(3,3,CV_64F);
-                cv::Rodrigues(rvecs[0],rot_mat);
-
-                // dumby matrices 
-                cv::Mat mtxR = cv::Mat::zeros(3,3,CV_64F);
-                cv::Mat mtxQ = cv::Mat::zeros(3,3,CV_64F);
-
-                cv::Vec3d r_xyz = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
-                if (g_debug)
-                    std::cout << "ROTATION: " << r_xyz(0) << "," << r_xyz(1) << "," << r_xyz(2) << std::endl;
-
-                // modify z and x components (distance from camera) using the rotation around the y axis of the marker 
-                double y_rotation_deg = r_xyz(1);
-                t_xyz(2) += cos(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
-                t_xyz(0) += sin(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
-
-                if (g_debug)
-                    std::cout << "AFTER TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
-
-//                detectedBot->setTranslationVector_M(t_xyz);
-//                detectedBot->setRotationVector_Deg(r_xyz);
                 // Draw axis for each marker
                 cv::aruco::drawAxis(image_copy, camera_matrix, dist_coeffs,
                         rvecs[i], tvecs[i], 0.1);
-
-                // determine robot heading 
-
             }
         }
 
@@ -340,4 +316,55 @@ Robot::Robot()
 Robot::Robot(relative_pos::ArucoRobot bot)
 {
     this->m_info = bot;
+}
+
+geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_vec, cv::Vec3d r_vec, int markerId)
+{
+    float marker_length_m = this->getArucoMarkerSideLength();
+
+    cv::Vec3d t_xyz = t_vec;
+    if (g_debug)
+        std::cout << "BEFORE TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
+
+    // get rotation vector 
+    cv::Mat rot_mat = cv::Mat::zeros(3,3,CV_64F);
+    cv::Rodrigues(r_vec,rot_mat);
+
+    // dumby matrices 
+    cv::Mat mtxR = cv::Mat::zeros(3,3,CV_64F);
+    cv::Mat mtxQ = cv::Mat::zeros(3,3,CV_64F);
+
+    cv::Vec3d r_xyz = cv::RQDecomp3x3(rot_mat, mtxR, mtxQ);
+    if (g_debug)
+        std::cout << "ROTATION: " << r_xyz(0) << "," << r_xyz(1) << "," << r_xyz(2) << std::endl;
+
+    // modify z and x components (distance from camera) using the rotation around the y axis of the marker 
+    double y_rotation_deg = r_xyz(1);
+    t_xyz(2) += cos(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
+    t_xyz(0) += sin(y_rotation_deg * PI / 180.0) * marker_length_m / 2.0;
+
+    if (g_debug)
+        std::cout << "AFTER TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
+
+    geometry_msgs::Pose2D parentPose = this->m_pose;
+
+    // we are assuming the camera is facing forward (parallel with parent robot's heading)
+    // z axis is straight out from robot 
+    // +x is right, -x is left 
+    geometry_msgs::Pose2D detectedPose;
+    detectedPose.x = parentPose.x + t_xyz(0); 
+    detectedPose.y = parentPose.y + t_xyz(2); 
+
+    // get theta 
+    // rotation around the aruco y axis gives relative 'z axis' rotation
+    // but first we need to figure out what side we are viewing 
+    int side = (markerId-1) % 4; 
+    std::cout << "Side: " << side << std::endl;
+    float relativeHeading = side * 90.0;
+    relativeHeading += y_rotation_deg;
+    std::cout << "Relative heading: " << relativeHeading << std::endl;
+
+    detectedPose.theta = parentPose.theta + relativeHeading;
+
+    return detectedPose;
 }
