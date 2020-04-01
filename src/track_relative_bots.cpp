@@ -364,7 +364,7 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     relativeHeading += y_rotation_deg;
     std::cout << "Relative heading: " << relativeHeading << std::endl;
 
-    detectedPose.theta = parentPose.theta + relativeHeading;
+    detectedPose.theta = (int(1000*(parentPose.theta - 180.0 + relativeHeading + 360.0)) % (360*1000))/1000.0;
 
     return detectedPose;
 }
