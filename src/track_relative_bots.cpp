@@ -153,6 +153,7 @@ int main(int argc, char **argv)
 
     ros::NodeHandle n;
 
+    // create an image converter class in case we are using a ros topic
     ImageConverter imageConverter(n);
 
     // create n bots 
@@ -210,7 +211,8 @@ int main(int argc, char **argv)
 
     if (parser.has("v")) {
         videoInput = parser.get<cv::String>("v");
-        if (videoInput.empty()) {
+        if (videoInput.empty()) 
+        {
             parser.printMessage();
             return 1;
         }
@@ -218,10 +220,26 @@ int main(int argc, char **argv)
         int source = static_cast<int>(std::strtol(videoInput.c_str(), &end, \
             10));
         // TODO: Check if v == ros
-        if (!end || end == videoInput.c_str()) {
-            in_video.open(videoInput); // url
-        } else {
-            in_video.open(source); // id
+        std::string rosCheck = videoInput.substr(0,1);
+        std::cout << "STRING START: " << rosCheck << std::endl;
+        if (rosCheck == "/")
+        {
+            // a ros topic was passed in as the video input 
+            ROS_INFO_STREAM("Using rostopic: " << videoInput);
+            usingRosTopicImage = true;
+            // video input must contain a valid rostopic name 
+            imageConverter.start(videoInput);
+        }
+        else if (!end || end == videoInput.c_str())
+        {
+            // we are assuming this is some kind of web server...
+            ROS_INFO_STREAM("Using live stream: " << videoInput);
+            in_video.open(videoInput); 
+        } 
+        else 
+        {
+            // use a webcam 
+            in_video.open(source); 
         }
     } else {
         in_video.open(0);
@@ -232,7 +250,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!in_video.isOpened()) {
+    if (!in_video.isOpened() && false == usingRosTopicImage) {
         std::cerr << "failed to open video input: " << videoInput << std::endl;
         return 1;
     }
@@ -250,8 +268,8 @@ int main(int argc, char **argv)
     fs["camera_matrix"] >> camera_matrix;
     fs["distortion_coefficients"] >> dist_coeffs;
 
-    std::cout << "camera_matrix\n" << camera_matrix << std::endl;
-    std::cout << "\ndist coeffs\n" << dist_coeffs << std::endl;
+    ROS_INFO_STREAM("camera_matrix\n" << camera_matrix << std::endl);
+    ROS_INFO_STREAM("\ndist coeffs\n" << dist_coeffs << std::endl);
 
     int count = 0;
     while (ros::ok() && (in_video.grab() || true == usingRosTopicImage))
@@ -262,8 +280,18 @@ int main(int argc, char **argv)
 
         if (true == usingRosTopicImage) 
         {
-            // we are using this robots ros topic to capture images 
+            bool warning = false;
+            while (false == imageConverter.isFrameReady())
+            {
+                if (warning == false)
+                {
+                    ROS_WARN("ROS topic frame not ready.");
+                    warning = true;
+                }
+                ros::spinOnce();
+            }
 
+            image = imageConverter.getCurrentFrame();
         }
         else 
         {

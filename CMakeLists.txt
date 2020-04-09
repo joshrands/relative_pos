@@ -25,6 +25,7 @@ generate_messages(
 	DEPENDENCIES
 	std_msgs
   geometry_msgs
+  sensor_msgs
 )
 
 catkin_package(

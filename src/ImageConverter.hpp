@@ -8,14 +8,22 @@
 
 class ImageConverter
 {
-    image_transport::ImageTransport it_;
-    image_transport::Subscriber image_sub_;
-    image_transport::Publisher image_pub_;
-
 public:
-    ImageConverter(ros::NodeHandle nh);// : it_(nh); 
+    ImageConverter(ros::NodeHandle nh);
 
     ~ImageConverter();
 
-    void imageCb(const sensor_msgs::ImageConstPtr& msg);
+    void start(std::string rosTopicName);
+    void imageCallback(const sensor_msgs::ImageConstPtr& msg);
+
+    cv::Mat getCurrentFrame();
+    bool isFrameReady();
+
+protected:
+    image_transport::ImageTransport m_imageTransport;
+    image_transport::Subscriber m_imageSub;
+    cv::Mat m_currentFrame;
+    bool m_isFrameReady;
+    std::string m_topicName;
+
 };

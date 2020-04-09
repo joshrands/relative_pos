@@ -1,41 +1,48 @@
 #include "ImageConverter.hpp"
 
-static const std::string OPENCV_WINDOW = "Image window";
-
 ImageConverter::ImageConverter(ros::NodeHandle nh)
-    : it_(nh)
+    : m_imageTransport(nh)
 {
     // Subscrive to input video feed and publish output video feed
-    image_sub_ = it_.subscribe("/camera/image_raw", 1,
-        &ImageConverter::imageCb, this);
-    image_pub_ = it_.advertise("/image_converter/output_video", 1);
+    this->m_isFrameReady = false;
+}
+
+void ImageConverter::start(std::string rosTopicName)
+{
+    ROS_WARN("Image converter not using threading.");
+
+    this->m_topicName = rosTopicName;
+
+    this->m_imageSub = m_imageTransport.subscribe(rosTopicName, 1,
+        &ImageConverter::imageCallback, this);
 }
 
 ImageConverter::~ImageConverter()
 {
 }
 
-void ImageConverter::imageCb(const sensor_msgs::ImageConstPtr& msg)
+void ImageConverter::imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
     cv_bridge::CvImagePtr cv_ptr;
     try
     {
         cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+        this->m_currentFrame = cv_ptr->image;
+        this->m_isFrameReady = true;
     }
     catch (cv_bridge::Exception& e)
     {
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
+}
 
-    // Draw an example circle on the video stream
-//    if (cv_ptr->image.rows > 60 && cv_ptr->image.cols > 60)
-//        cv::circle(cv_ptr->image, cv::Point(50, 50), 10, CV_RGB(255,0,0));
+bool ImageConverter::isFrameReady()
+{
+    return this->m_isFrameReady;
+}
 
-    // Update GUI Window
-//    cv::imshow(OPENCV_WINDOW, cv_ptr->image);
-//    cv::waitKey(3);
-
-    // Output modified video stream
-//    image_pub_.publish(cv_ptr->toImageMsg());
+cv::Mat ImageConverter::getCurrentFrame()
+{
+    return this->m_currentFrame;
 }
