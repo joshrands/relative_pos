@@ -14,6 +14,8 @@ bool g_debug = false;
 #include <relative_pos/ArucoRobot.h>
 #include <relative_pos/RobotPose.h>
 
+#include "ImageConverter.hpp"
+
 #include <iostream>
 #include <cstdlib>
 #include <sstream>
@@ -42,9 +44,9 @@ const char* keys  =
         "DICT_7X7_250=14, DICT_7X7_1000=15, DICT_ARUCO_ORIGINAL = 16}"
         "{h        |false | Print help }"
         "{v        |<none>| Custom video source, otherwise '0' }"
-        "{n        |1     | Number of robots }"
-        "{l        |      | Actual aruco side length in meters }"
-        "{p        |0     | Parent robot id}"
+        "{n        |3     | Number of robots }"
+        "{l        |0.11  | Actual aruco side length in meters }"
+        "{p        |1     | Parent robot id}"
         ;
 }
 
@@ -151,6 +153,8 @@ int main(int argc, char **argv)
 
     ros::NodeHandle n;
 
+    ImageConverter imageConverter(n);
+
     // create n bots 
     float marker_length_m = parser.get<float>("l"); 
     int numberOfBots = parser.get<int>("n");
@@ -202,6 +206,8 @@ int main(int argc, char **argv)
 
     cv::String videoInput = "0";
     cv::VideoCapture in_video;
+    bool usingRosTopicImage = false;
+
     if (parser.has("v")) {
         videoInput = parser.get<cv::String>("v");
         if (videoInput.empty()) {
@@ -211,6 +217,7 @@ int main(int argc, char **argv)
         char* end;
         int source = static_cast<int>(std::strtol(videoInput.c_str(), &end, \
             10));
+        // TODO: Check if v == ros
         if (!end || end == videoInput.c_str()) {
             in_video.open(videoInput); // url
         } else {
@@ -247,13 +254,22 @@ int main(int argc, char **argv)
     std::cout << "\ndist coeffs\n" << dist_coeffs << std::endl;
 
     int count = 0;
-    while (ros::ok() && in_video.grab())
+    while (ros::ok() && (in_video.grab() || true == usingRosTopicImage))
     { 
         // update parameters from ros
         // WARNING: Currently all robots must have the same marker sizes.  
         marker_length_m = robots.at(0)->getArucoMarkerSideLength();
 
-        in_video.retrieve(image);
+        if (true == usingRosTopicImage) 
+        {
+            // we are using this robots ros topic to capture images 
+
+        }
+        else 
+        {
+            in_video.retrieve(image);
+        }
+
         image.copyTo(image_copy);
         std::vector<int> ids;
         std::vector<std::vector<cv::Point2f> > corners;
@@ -293,13 +309,12 @@ int main(int argc, char **argv)
         }
 
         imshow("Relative Robot Tracker", image_copy);
-        char key = (char)cv::waitKey(wait_time);
+        char key = (char)cv::waitKey(1);
         if (key == 27)
             break;
 
         ros::spinOnce();
 
-        loop_rate.sleep();
         ++count;
     }
 
