@@ -23,6 +23,8 @@ bool g_debug = false;
 #include <vector>
 #include <math.h> 
 
+std::string regexBaseName = "tb3_";
+
 // to_string didn't work for some reason 
 namespace patch
 {
@@ -123,7 +125,7 @@ void createBots(int numberOfBots,float marker_length_m)
     for (int i = 0; i < numberOfBots; i++)
     {
         // create a new bot 
-        std::string name = "robot" + patch::to_string(i);
+        std::string name = regexBaseName + patch::to_string(i);
 
         relative_pos::ArucoRobot botInfo;
         botInfo.id = i;
@@ -177,7 +179,7 @@ int main(int argc, char **argv)
 
     // get parent bot id 
     Robot::m_parentBot = parser.get<int>("p");
-    std::string parentBotName = "robot" + patch::to_string(Robot::m_parentBot);
+    std::string parentBotName = regexBaseName + patch::to_string(Robot::m_parentBot);
     Robot* parentBot = robots.at(Robot::m_parentBot);
 
     for (int i = 0; i < numberOfBots; i++)
