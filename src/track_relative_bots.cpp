@@ -75,7 +75,7 @@ public:
     void setRotationVector_Deg(cv::Vec3d r_xyz) { this->m_r_xyz_deg = r_xyz; }
     */
 
-    static int getRobotIdFromArucoId(int arucoId) { return floor((arucoId-1)/4); }
+    static int getRobotIdFromArucoId(int arucoId) { return floor((arucoId)/10); }
 
     static int m_totalRobots;
     static int m_parentBot;
@@ -122,14 +122,14 @@ void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
 
 void createBots(int numberOfBots,float marker_length_m)
 {
-    for (int i = 0; i < numberOfBots; i++)
+    for (int i = 1; i < numberOfBots + 1; i++)
     {
         // create a new bot 
         std::string name = regexBaseName + patch::to_string(i);
 
         relative_pos::ArucoRobot botInfo;
         botInfo.id = i;
-        int offset = i*4;
+        int offset = i*10;
         botInfo.front_aruco_id = offset+1;
         botInfo.right_aruco_id = offset+4;
         botInfo.left_aruco_id = offset+2;
@@ -187,7 +187,7 @@ int main(int argc, char **argv)
         std::string name = robots.at(i)->getName();
         bot_subs[i] = n.subscribe<relative_pos::ArucoRobot>(name + "/info",1000,arucoRobotCallback);
 
-        if (i != Robot::m_parentBot)
+        if ((i+1) != Robot::m_parentBot)
         {
             // create a publisher!
             relative_positions[i] = n.advertise<geometry_msgs::Pose2D>(parentBotName + "/" + name + "/relative_pose", 1000);
@@ -315,7 +315,7 @@ int main(int argc, char **argv)
 
             for(int i=0; i < ids.size(); i++)
             {
-                if (ids.at(i) > robots.size() * 4)
+                if (ids.at(i) > (robots.size()+1) * 10)
                 {
                     ROS_WARN("ERROR: Invalid aruco id %d",ids.at(i));
                     continue;
@@ -329,7 +329,7 @@ int main(int argc, char **argv)
 
                 // Determine robot x,y,theta based off of what side you are viewing 
                 geometry_msgs::Pose2D detectedPose = parentBot->getRelativeRobotPoseFromArucoVectors(tvecs.at(i),rvecs.at(i),ids.at(i)); 
-                relative_positions[robotId].publish(detectedPose);
+                relative_positions[robotId-1].publish(detectedPose);
                 detectedBot->setRobotPose(detectedPose);
 
                 // Draw axis for each marker
@@ -403,7 +403,7 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     // get theta 
     // rotation around the aruco y axis gives relative 'z axis' rotation
     // but first we need to figure out what side we are viewing 
-    int side = (markerId-1) % 4; 
+    int side = (markerId-1) % 10; 
     std::cout << "Side: " << side << std::endl;
     float relativeHeading = side * 90.0;
     relativeHeading += y_rotation_deg;
