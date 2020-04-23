@@ -49,6 +49,8 @@ const char* keys  =
         "{n        |3     | Number of robots }"
         "{l        |0.11  | Actual aruco side length in meters }"
         "{p        |1     | Parent robot id}"
+        "{z        |0     | The z offset of the aruco marker cube}"
+        "{i        |1     | The initial starting robot index}"
         ;
 }
 
@@ -79,6 +81,7 @@ public:
 
     static int m_totalRobots;
     static int m_parentBot;
+    static int m_startingIndex;
 
 protected:
     relative_pos::ArucoRobot m_info;
@@ -91,6 +94,7 @@ protected:
 
 int Robot::m_totalRobots = 0;
 int Robot::m_parentBot = 0;
+int Robot::m_startingIndex = 0;
 
 std::vector<Robot*> robots;
 
@@ -122,7 +126,7 @@ void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
 
 void createBots(int numberOfBots,float marker_length_m)
 {
-    for (int i = 1; i < numberOfBots + 1; i++)
+    for (int i = Robot::m_startingIndex; i < numberOfBots + Robot::m_startingIndex; i++)
     {
         // create a new bot 
         std::string name = regexBaseName + patch::to_string(i);
@@ -152,6 +156,8 @@ int main(int argc, char **argv)
 
     cv::CommandLineParser parser(argc, argv, keys);
     parser.about(about);
+
+    Robot::m_startingIndex = parser.get<int>("i");
 
     ros::NodeHandle n;
 
@@ -187,7 +193,7 @@ int main(int argc, char **argv)
         std::string name = robots.at(i)->getName();
         bot_subs[i] = n.subscribe<relative_pos::ArucoRobot>(name + "/info",1000,arucoRobotCallback);
 
-        if ((i+1) != Robot::m_parentBot)
+        if ((i+Robot::m_startingIndex) != Robot::m_parentBot)
         {
             // create a publisher!
             relative_positions[i] = n.advertise<geometry_msgs::Pose2D>(parentBotName + "/" + name + "/relative_pose", 1000);
@@ -315,7 +321,8 @@ int main(int argc, char **argv)
 
             for(int i=0; i < ids.size(); i++)
             {
-                if (ids.at(i) > (robots.size()+1) * 10)
+                if (ids.at(i) < Robot::m_startingIndex*10+1 
+                || ids.at(i) > (robots.size()+Robot::m_startingIndex) * 10)
                 {
                     ROS_WARN("ERROR: Invalid aruco id %d",ids.at(i));
                     continue;
@@ -329,7 +336,7 @@ int main(int argc, char **argv)
 
                 // Determine robot x,y,theta based off of what side you are viewing 
                 geometry_msgs::Pose2D detectedPose = parentBot->getRelativeRobotPoseFromArucoVectors(tvecs.at(i),rvecs.at(i),ids.at(i)); 
-                relative_positions[robotId-1].publish(detectedPose);
+                relative_positions[robotId-Robot::m_startingIndex].publish(detectedPose);
                 detectedBot->setRobotPose(detectedPose);
 
                 // Draw axis for each marker
@@ -391,6 +398,9 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     std::cout << "AFTER TRANSFORMATION: " << t_xyz(0) << "," << t_xyz(1) << "," << t_xyz(2) << std::endl;
 
     geometry_msgs::Pose2D parentPose = this->m_pose;
+
+    // we need to modify z to not consider vertical. 
+    t_xyz(2) = sqrt(pow(t_xyz(2),2) - pow(t_xyz(1),2));
 
     // we are assuming the camera is facing forward (parallel with parent robot's heading)
     // z axis is straight out from robot 
