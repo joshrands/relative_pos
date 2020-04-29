@@ -51,6 +51,8 @@ const char* keys  =
         "{p        |1     | Parent robot id}"
         "{z        |0     | The z offset of the aruco marker cube}"
         "{i        |1     | The initial starting robot index}"
+        "{f        |calibration_params.yml     | The camera calibration file}" 
+        "{path     |<none>| The path to the calibration file}"
         ;
 }
 
@@ -105,7 +107,7 @@ void parentBotPoseCallback(const geometry_msgs::Pose2D::ConstPtr& msg)
 
     ROS_INFO_STREAM("Reived pose update for parent robot " << Robot::m_parentBot);
 
-    robots.at(Robot::m_parentBot)->setRobotPose(pose);
+    robots.at(Robot::m_parentBot-Robot::m_startingIndex)->setRobotPose(pose);
 }
 
 // callback function for setting parameters about a robot 
@@ -120,7 +122,7 @@ void arucoRobotCallback(const relative_pos::ArucoRobot::ConstPtr& msg)
     if (id >= Robot::m_totalRobots)
         ROS_WARN("Invalid Robot ID detected.");
 
-    Robot* bot = robots.at(id);
+    Robot* bot = robots.at(id-Robot::m_startingIndex);
     bot->setInfo(info);
 }
 
@@ -186,7 +188,7 @@ int main(int argc, char **argv)
     // get parent bot id 
     Robot::m_parentBot = parser.get<int>("p");
     std::string parentBotName = regexBaseName + patch::to_string(Robot::m_parentBot);
-    Robot* parentBot = robots.at(Robot::m_parentBot);
+    Robot* parentBot = robots.at(Robot::m_parentBot-Robot::m_startingIndex);
 
     for (int i = 0; i < numberOfBots; i++)
     {
@@ -271,7 +273,16 @@ int main(int argc, char **argv)
         cv::aruco::getPredefinedDictionary( \
         cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
 
-    cv::FileStorage fs("calibration_params.yml", cv::FileStorage::READ);
+    std::string fileName = parser.get<cv::String>("f");
+    ROS_INFO_STREAM("Opening calibration file: " << fileName << std::endl;);
+
+    if (parser.has("path")) {
+        std::string filePath = parser.get<cv::String>("path");
+        fileName = filePath + "/" + fileName;
+    }
+
+    ROS_INFO_STREAM("Opening calibration file: " << fileName << std::endl;);
+    cv::FileStorage fs(fileName, cv::FileStorage::READ);
 
     fs["camera_matrix"] >> camera_matrix;
     fs["distortion_coefficients"] >> dist_coeffs;
@@ -332,7 +343,7 @@ int main(int argc, char **argv)
                 int robotId = Robot::getRobotIdFromArucoId(ids.at(i));
                 ROS_INFO_STREAM("Robot" << Robot::m_parentBot << " detected Robot" << robotId);
 
-                Robot* detectedBot = robots.at(robotId);
+                Robot* detectedBot = robots.at(robotId-Robot::m_startingIndex);
 
                 // Determine robot x,y,theta based off of what side you are viewing 
                 geometry_msgs::Pose2D detectedPose = parentBot->getRelativeRobotPoseFromArucoVectors(tvecs.at(i),rvecs.at(i),ids.at(i)); 
@@ -345,7 +356,7 @@ int main(int argc, char **argv)
             }
         }
 
-        imshow("Relative Robot Tracker", image_copy);
+        imshow("Relative Robot Tracker for Robot " + patch::to_string(Robot::m_parentBot), image_copy);
         char key = (char)cv::waitKey(1);
         if (key == 27)
             break;
