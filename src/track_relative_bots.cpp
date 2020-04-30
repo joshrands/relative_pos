@@ -417,7 +417,7 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     // z axis is straight out from robot 
     // +x is right, -x is left 
     geometry_msgs::Pose2D detectedPose;
-    std::cout << parentPose.theta << std::endl;
+//    std::cout << parentPose.theta << std::endl;
 //    detectedPose.x = parentPose.x + cos(parentPose.theta*PI / 180.0)*t_xyz(0) + sin(parentPose.theta*PI / 180.0)*t_xyz(2); 
 //    detectedPose.y = parentPose.y - sin(parentPose.theta*PI / 180.0)*t_xyz(0) + cos(parentPose.theta*PI / 180.0)*t_xyz(2); 
     detectedPose.x = t_xyz(0);
@@ -428,9 +428,13 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     // but first we need to figure out what side we are viewing 
     int side = (markerId-1) % 10; 
     std::cout << "Side: " << side << std::endl;
+    // add two so same heading = 0 degrees 
     float relativeHeading = ((side+2)%4) * 90.0;
     relativeHeading += y_rotation_deg;
     std::cout << "Relative heading: " << relativeHeading << std::endl;
+
+    if (relativeHeading < 0)
+        relativeHeading += 360;
 
     detectedPose.theta = relativeHeading;// (int(1000*(parentPose.theta - 180.0 + relativeHeading + 360.0)) % (360*1000))/1000.0;
 
