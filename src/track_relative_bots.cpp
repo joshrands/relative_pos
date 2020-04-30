@@ -418,19 +418,21 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     // +x is right, -x is left 
     geometry_msgs::Pose2D detectedPose;
     std::cout << parentPose.theta << std::endl;
-    detectedPose.x = parentPose.x + cos(parentPose.theta*PI / 180.0)*t_xyz(0) + sin(parentPose.theta*PI / 180.0)*t_xyz(2); 
-    detectedPose.y = parentPose.y - sin(parentPose.theta*PI / 180.0)*t_xyz(0) + cos(parentPose.theta*PI / 180.0)*t_xyz(2); 
+//    detectedPose.x = parentPose.x + cos(parentPose.theta*PI / 180.0)*t_xyz(0) + sin(parentPose.theta*PI / 180.0)*t_xyz(2); 
+//    detectedPose.y = parentPose.y - sin(parentPose.theta*PI / 180.0)*t_xyz(0) + cos(parentPose.theta*PI / 180.0)*t_xyz(2); 
+    detectedPose.x = t_xyz(0);
+    detectedPose.y = t_xyz(2);
 
     // get theta 
     // rotation around the aruco y axis gives relative 'z axis' rotation
     // but first we need to figure out what side we are viewing 
     int side = (markerId-1) % 10; 
     std::cout << "Side: " << side << std::endl;
-    float relativeHeading = side * 90.0;
+    float relativeHeading = ((side+2)%4) * 90.0;
     relativeHeading += y_rotation_deg;
     std::cout << "Relative heading: " << relativeHeading << std::endl;
 
-    detectedPose.theta = (int(1000*(parentPose.theta - 180.0 + relativeHeading + 360.0)) % (360*1000))/1000.0;
+    detectedPose.theta = relativeHeading;// (int(1000*(parentPose.theta - 180.0 + relativeHeading + 360.0)) % (360*1000))/1000.0;
 
     return detectedPose;
 }
