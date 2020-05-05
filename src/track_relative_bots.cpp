@@ -436,7 +436,12 @@ geometry_msgs::Pose2D Robot::getRelativeRobotPoseFromArucoVectors(cv::Vec3d t_ve
     if (relativeHeading < 0)
         relativeHeading += 360;
 
-    detectedPose.theta = relativeHeading;// (int(1000*(parentPose.theta - 180.0 + relativeHeading + 360.0)) % (360*1000))/1000.0;
+    // flip to be ccw :)
+    if (relativeHeading < 180)
+        detectedPose.theta = -1*relativeHeading;
+    else 
+        detectedPose.theta = 360 - relativeHeading;
+//    detectedPose.theta = relativeHeading;// (int(1000*(parentPose.theta - 180.0 + relativeHeading + 360.0)) % (360*1000))/1000.0;
 
     return detectedPose;
 }
